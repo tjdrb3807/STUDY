@@ -82,3 +82,43 @@ print(instance.x)   // 100
 ```
 
 비탈출 클로저에서는 인스턴스의 프로퍼티인 x를 사용하기 위해 self 키워드를 생략해도 무관했지만, 탈출하는 클로저에서는 값 획득을 하기 위해 self 키워드를 사용하여 프로퍼티에 접근해야한다.
+
+<br>
+
+## withoutActuallyEscaping
+비탈출 클로저나 탈출 클로저와 관련한 여러 가지 상황 중 한 가지 애매한 경우가 있다. 비 탈출 클로저로 전달한 클로저가 탈출 클로저인 척 해야 하는 경우이다. 실제로는 탈출하지 않는데 다른 함수에서 탈출 클로저를 요구하는 상황에 해당한다. 
+
+>오류가 발생하는 hasElements 함수
+```Swift
+func hasElements(in arry: [Int], match predicate: (Int) -> Bool) -> Bool {
+    (arry.lazy.filler { predicate($0) }.isEmpty == false)
+}
+```
+
+hasElement(in:match:) 함수는 @escaping 키워드가 없으므로 비탈출 클로저를 전달받게 된다. 그런데 내부에서 lazy 컬렉션은 비동기 작업을 할 때 사용하기 때문에 filler 메서드가 요구하는 클로저는 탈출 클로저이다. 그래서 탈출 클로저 자리에 비탈출 클로저를 전달할 수 없다는 오류와 마주하게 된다.
+
+그런데 함수 전체를 보면, match 클로저가 탈출할 필요가 없다. 이떄 해당 클로저를 탈출 클로저인양 사용할 수 있게 돕는 `withoutActuallyEscaping(_:do:)` 함수가 있다.
+
+>withoutActuallyEscaping(_:do:) 함수의 활용
+```Swift
+let numbers: [Int] = [2, 4, 6, 8]
+
+let evenNumberPredicate = { (number: Int) -> Bool in number % 2 == 0 }
+let oddNumberPredicate = { (number: Int) -> Bool in number % 2 == 1 }
+
+func hasElements(in arry: [Int], match predicate: (Int) -> Bool) -> Bool {
+    withoutActuallyEscaping(
+        predicate,
+        do: { escapablePredicate in
+            (arry.lazy.filter { escapablePredicate($0) }.isEmpty == false)
+        })
+}
+
+let hasEvenNumber = hasElements(in: numbers, match: evenNumberPredicate)
+let hasOddNumber = hasElements(in: numbers, match: oddNumberPredicate)
+
+print(hasEvenNumber)    // true
+print(hasOddNumber)     // false
+```
+
+`withoutActuallyEscaping(_:do:)` 함수의 첫 번째 전달인자로 탈출 클로저인 척해야 하는 클로저가 전달된다. do 전달 인자는 이 비탈출 클로저를 또 매개변수로 전달받아 실제로 작업을 실행할 탈출 클로저를 전달한다. 이런게 withoutActuallyEscaping(_:do:) 함수를 활용하여 비탈출 클로저를 탈출 클로저처럼 사용할 수 있다.
